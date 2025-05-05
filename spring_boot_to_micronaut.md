@@ -701,3 +701,121 @@ class SaasSubscriptionControllerGetTest {
 ### Conclusão
 
 A definição de rotas é extremamente semelhante em ambos os frameworks. No entanto, o Micronaut Framework oferece validação de rotas em tempo de compilação e uma abordagem sem reflexão para isso.
+
+
+## [Implementando POST  spring boot vs micronaut](https://guides.micronaut.io/latest/building-a-rest-api-spring-boot-vs-micronaut-post-gradle-java.html)
+
+Este guia compara como escrever um endpoint POST apoiado por uma camada de persistência em um Micronaut Framework e aplicativos Spring Boot.
+
+O aplicativo Spring Boot usa *Spring Data e H2* . O aplicativo Micronaut usa *Micronaut Data e H2*. O Micronaut Data é um kit de ferramentas de acesso a banco de dados que usa compilação Ahead of Time (AoT) para pré-computar consultas para interfaces de repositório, que são então executadas por uma camada de tempo de execução fina e leve.
+
+Este guia é o quarto tutorial de Construindo uma API REST - uma série de tutoriais que comparam como desenvolver uma API REST com o Micronaut Framework e o Spring Boot.
+
+### Controlador
+
+O controlador recebe uma solicitação POST com um corpo JSON, o repositório persiste o SaasSubscriptione então retorna uma resposta 201 com um Location cabeçalho HTTP.
+
+![alt text](image-1.png)
+
+
+### Controlador Micronaut
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Body;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Post;
+import io.micronaut.http.uri.UriBuilder;
+
+import java.net.URI;
+
+@Controller("/subscriptions")//1
+class SaasSubscriptionPostController {
+
+    private final SaasSubscriptionRepository repository;
+
+    SaasSubscriptionPostController(SaasSubscriptionRepository repository) {//2
+        this.repository = repository;
+    }
+
+    @Post//3
+    HttpResponse<?> createSaasSubscription(@Body SaasSubscription newSaasSubscription) {//4
+        SaasSubscription savedSaasSubscription = repository.save(newSaasSubscription);
+        URI locationOfNewSaasSubscription = UriBuilder.of("/subscriptions") //5
+                .path(savedSaasSubscription.id().toString())
+                .build();
+        return HttpResponse.created(locationOfNewSaasSubscription);
+    }
+}
+
+```
+
+1 - A classe é definida como um controlador com a anotação `@Controller` mapeada para o caminho /subscriptions.
+2 - Use injeção de construtor para injetar um bean do tipo `SaasSubscriptionRepository`.
+3 - A anotação `@Post` mapeia o `createSaasSubscription` método para uma solicitação HTTP POST em /subscriptions.
+4 - A `@Bodyanotação` indica que o corpo da solicitação deve ser analisado pelo Micronaut Framework e vinculado ao parâmetro anotado.
+5 - A API do `UriBuilder` permite que você crie um java.net.URIfacilmente.
+
+
+### Testes
+
+```java
+
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.http.HttpHeaders;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import org.junit.jupiter.api.Test;
+
+import java.net.URI;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@MicronautTest//1
+class SaasSubscriptionPostControllerTest {
+
+    @Test
+    void shouldCreateANewSaasSubscription(@Client("/") HttpClient httpClient) { //2
+        BlockingHttpClient client = httpClient.toBlocking();
+        SaasSubscription subscription = new SaasSubscription(100L, "Advanced", 2900);
+
+        HttpResponse<Void> createResponse = client.exchange(HttpRequest.POST("/subscriptions", subscription), Void.class);
+        assertThat(createResponse.getStatus().getCode()).isEqualTo(HttpStatus.CREATED.getCode());
+        Optional<URI> locationOfNewSaasSubscriptionOptional = createResponse.getHeaders().get(HttpHeaders.LOCATION, URI.class);
+        assertThat(locationOfNewSaasSubscriptionOptional).isPresent();
+
+        URI locationOfNewSaasSubscription = locationOfNewSaasSubscriptionOptional.get();
+        HttpResponse<String> getResponse = client.exchange(HttpRequest.GET(locationOfNewSaasSubscription), String.class);
+        assertThat(getResponse.getStatus().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(getResponse.body());
+        Number id = documentContext.read("$.id");
+        assertThat(id).isNotNull();
+
+        Integer cents = documentContext.read("$.cents");
+        assertThat(cents).isEqualTo(2900);
+    }
+}
+
+```
+
+1 - Anote a classe com `@MicronautTest` para que o framework Micronaut inicialize o contexto da aplicação e o servidor embarcado. Mais informações .
+2 - Injete o `HttpClient` bean e aponte-o para o servidor incorporado. O cliente HTTP é injetado como um parâmetro de método, o que significa que ele será fechado automaticamente após o teste ser concluído.
+
+
+### Conclusão
+
+Como você pode ver neste guia, o código para escrever um endpoint POST apoiado por uma camada de persistência em aplicações Micronaut Framework e Spring Boot é muito semelhante. No entanto, a abordagem de tempo de compilação do Micronaut não requer reflexão ou proxies, resultando em aplicações mais rápidas e eficientes.
+
