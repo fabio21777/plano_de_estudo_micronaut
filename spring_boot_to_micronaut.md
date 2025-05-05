@@ -265,4 +265,62 @@ class GreeterTest {
 Como podemos ver, o Micronaut e o Spring Boot são muito semelhantes, em nivel de código são quase idênticos, para trabalhar com bens no micronaut, usamos a anotação @Singleton para definir o bean, enquanto no Spring Boot usamos a anotação @Component para definir o bean.
 
 
-###
+## Construindo URIs
+
+Este guia compara o uso do UriComponentsBuilder do Spring com o UriBuilder do Micronaut Framework.
+
+Ao desenvolver aplicações web, frequentemente precisamos construir URIs. Por exemplo, para criar respostas de redirecionamento. Neste artigo, comparamos duas APIs semelhantes: Spring UriComponentsBuildere Micronaut UriBuilder .
+
+### Primeiro vamos comparar com a classe no spring boot
+
+```java
+
+package example.micronaut;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class UriComponentsBuilderTest {
+
+    @Test
+    void youCanUseUriComponentsBuilderToBuildUris() {
+        String isbn = "1680502395";
+        assertEquals("/book/1680502395?lang=es", UriComponentsBuilder.fromUriString("/book")
+                .path("/" + isbn)
+                .queryParam("lang", "es")
+                .build()
+                .toUriString());
+    }
+}
+
+```
+
+### Agora vamos comparar com a classe no micronaut
+
+Como você pode ver no trecho de código a seguir, a API é semelhante. Você deve conseguir migrar facilmente.
+
+```java
+package example.micronaut;
+
+import io.micronaut.http.uri.UriBuilder;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class UriBuilderTest {
+
+    @Test
+    void youCanUseUriBuilderToBuildUris() {
+        String isbn = "1680502395";
+        assertEquals("/book/1680502395?lang=es", UriBuilder.of("/book")
+                .path(isbn)
+                .queryParam("lang", "es")
+                .build()
+                .toString());
+    }
+}
+
+
+```
