@@ -324,3 +324,222 @@ public class UriBuilderTest {
 
 
 ```
+
+## Execute um aplicativo Spring Boot como um aplicativo Micronaut
+
+[link](https://guides.micronaut.io/latest/micronaut-spring-boot-maven-java.html)
+
+Este guia compara como executar um aplicativo Spring Boot como um aplicativo Micronaut.
+
+
+## Micronaut Data para spring boot
+
+[link](https://guides.micronaut.io/latest/spring-boot-micronaut-data-gradle-java.html)
+
+## Testando serialização spring boot vs micronaut - criando rest api
+
+Este guia compara como testar serialização em um Micronaut Framework e aplicativos Spring Boot.
+
+Este guia é o primeiro tutorial de Construindo uma API REST - uma série de tutoriais que comparam como desenvolver uma API REST com o Micronaut Framework e o Spring Boot.
+
+
+### Registro
+
+
+A aplicação que construiremos é uma API REST para assinaturas de Software como Serviço (SaaS). A aplicação serializa e desserializa o seguinte registro Java de/para JSON.
+
+```java
+package example.micronaut;
+
+record SaasSubscription(Long id, String name, Integer cents) {
+}
+
+ ```
+
+ O Micronaut suporta serialização com o Jackson Databind ou com a serialização do Micronaut . Se você usar o Micronaut Jackson Databind, o registro acima será idêntico no Micronaut Framework e no Spring Boot.
+
+ #### Serialização do Micronaut
+
+Se você usar a serialização Micronaut, deverá optar pela classe a ser submetida à serialização, o que pode ser feito facilmente anotando-a com
+`@Serdeable`
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.serde.annotation.Serdeable;
+
+@Serdeable
+record SaasSubscription(Long id, String name, Integer cents) {
+}
+
+```
+
+#### Json esperado
+
+```json
+{
+  "id": 1,
+  "name": "Micronaut",
+  "cents": 1000
+}
+```
+
+#### Teste
+
+Neste tutorial, usamos AssertJ nos testes. Além disso, usamos Jayway JsonPath - uma DSL Java para leitura de documentos JSON
+
+#### Teste de unidade do Spring Boot
+
+Como a criação de um contexto de aplicação no Spring Boot é lenta , os testes de integração no Spring Boot utilizam o fatiamento de teste. Ao usar o fatiamento de teste, o Spring cria um contexto de aplicação reduzido para uma fatia específica.
+
+```java
+
+package example.micronaut;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.json.JsonTest;
+import org.springframework.boot.test.json.JacksonTester;
+
+import java.io.IOException;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@JsonTest //1
+class SaasSubscriptionJsonTest {
+
+    @Autowired//2
+    private JacksonTester<SaasSubscription> json; //3
+
+    @Test
+    void saasSubscriptionSerializationTest() throws IOException {
+        SaasSubscription subscription = new SaasSubscription(99L, "Professional", 4900);
+        assertThat(json.write(subscription)).isStrictlyEqualToJson("expected.json");
+        assertThat(json.write(subscription)).hasJsonPathNumberValue("@.id");
+        assertThat(json.write(subscription)).extractingJsonPathNumberValue("@.id")
+                .isEqualTo(99);
+        assertThat(json.write(subscription)).hasJsonPathStringValue("@.name");
+        assertThat(json.write(subscription)).extractingJsonPathStringValue("@.name")
+                .isEqualTo("Professional");
+        assertThat(json.write(subscription)).hasJsonPathNumberValue("@.cents");
+        assertThat(json.write(subscription)).extractingJsonPathNumberValue("@.cents")
+                .isEqualTo(4900);
+    }
+
+    @Test
+    void saasSubscriptionDeserializationTest() throws IOException {
+        String expected = """
+           {
+               "id":100,
+               "name": "Advanced",
+               "cents":2900
+           }
+           """;
+        assertThat(json.parse(expected))
+                .isEqualTo(new SaasSubscription(100L, "Advanced", 2900));
+        assertThat(json.parseObject(expected).id()).isEqualTo(100);
+        assertThat(json.parseObject(expected).name()).isEqualTo("Advanced");
+        assertThat(json.parseObject(expected).cents()).isEqualTo(2900);
+    }
+}
+
+```
+
+1 - Para testar se a serialização e desserialização do Object JSON estão funcionando conforme o esperado, você pode usar a `@JsonTest` anotação . `@JsonTest` que configura automaticamente o Jackson ObjectMapper, quaisquer `@JsonComponent` beans e quaisquer módulos Jackson.
+2 - O `@Autowired` é usado para injetar o JacksonTester no teste.
+3 - O `JacksonTester` é um recurso do Spring Boot que fornece uma maneira fácil de testar a serialização e desserialização de objetos JSON. Ele fornece métodos para escrever e ler objetos JSON, além de verificar se o JSON gerado corresponde ao esperado.
+
+#### Teste de unidade do Micronaut
+
+```java
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.core.io.ResourceLoader;
+import io.micronaut.json.JsonMapper;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import org.junit.jupiter.api.Test;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@MicronautTest(startApplication = false) //1
+class SaasSubscriptionJsonTest {
+
+    @Test
+    void saasSubscriptionSerializationTest(JsonMapper json, ResourceLoader resourceLoader) throws IOException { //2
+        SaasSubscription subscription = new SaasSubscription(99L, "Professional", 4900);
+        String expected = getResourceAsString(resourceLoader, "expected.json");
+        String result = json.writeValueAsString(subscription);
+        assertThat(result).isEqualToIgnoringWhitespace(expected);
+        DocumentContext documentContext = JsonPath.parse(result);
+        Number id = documentContext.read("$.id");
+        assertThat(id)
+                .isNotNull()
+                .isEqualTo(99);
+
+        String name = documentContext.read("$.name");
+        assertThat(name)
+                .isNotNull()
+                .isEqualTo("Professional");
+
+        Number cents = documentContext.read("$.cents");
+        assertThat(cents)
+                .isNotNull()
+                .isEqualTo(4900);
+    }
+
+    @Test
+    void saasSubscriptionDeserializationTest(JsonMapper json) throws IOException {
+        String expected = """
+           {
+               "id":100,
+               "name": "Advanced",
+               "cents":2900
+           }
+           """;
+        assertThat(json.readValue(expected, SaasSubscription.class))
+                .isEqualTo(new SaasSubscription(100L, "Advanced", 2900));
+        assertThat(json.readValue(expected, SaasSubscription.class).id()).isEqualTo(100);
+        assertThat(json.readValue(expected, SaasSubscription.class).name()).isEqualTo("Advanced");
+        assertThat(json.readValue(expected, SaasSubscription.class).cents()).isEqualTo(2900);
+    }
+
+    private static String getResourceAsString(ResourceLoader resourceLoader, String resourceName) {
+        return resourceLoader.getResourceAsStream(resourceName)
+                .flatMap(stream -> {
+                    try (InputStream is = stream;
+                         Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
+                         BufferedReader bufferedReader = new BufferedReader(reader)) {
+                        return Optional.of(bufferedReader.lines().collect(Collectors.joining("\n")));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    return Optional.empty();
+                })
+                .orElse("");
+    }
+}
+
+```
+
+1 - Anote a classe com `@MicronautTest` para que o framework Micronaut inicialize o contexto da aplicação e o servidor embarcado. Por padrão, cada @Testmétodo será encapsulado em uma transação que será revertida quando o teste for concluído. Esse comportamento pode ser alterado configurando transaction-o como false.
+
+2 - Por padrão, com o `JUnit 5`, os parâmetros do método de teste serão resolvidos para beans, se possível.
+
+#### Conclusão
+
+Como mostrado neste tutorial, testar serialização no Micronaut Framework e no Spring Boot é semelhante. A principal diferença é que o slicing de teste não é necessário no Micronaut Framework.
+
+
+
