@@ -1019,3 +1019,174 @@ class SaasSubscriptionControllerGetTest {
 ### Conclusão
 
 Adicionar uma camada de persistência é fácil em ambas as estruturas, e a API é quase idêntica. No entanto, a abordagem sem reflexão e em tempo de compilação da Micronaut Data resulta em melhor desempenho, rastreamentos de pilha menores e consumo de memória reduzido.
+
+## paginação e listagem - Spring Boot vs Micronaut
+
+Este guia compara como escrever um endpoint POST apoiado por uma camada de persistência em um Micronaut Framework e aplicativos Spring Boot.
+
+O aplicativo Spring Boot usa Spring Data e H2 . O aplicativo Micronaut usa Micronaut Data e H2. O Micronaut Data é um kit de ferramentas de acesso a banco de dados que usa compilação Ahead of Time (AoT) para pré-computar consultas para interfaces de repositório, que são então executadas por uma camada de tempo de execução fina e leve.
+
+Este guia é o quarto tutorial de Construindo uma API REST - uma série de tutoriais que comparam como desenvolver uma API REST com o Micronaut Framework e o Spring Boot.
+
+
+### Paginação
+
+Ao retornar vários registros, você precisa de algum controle sobre a paginação dos dados. O Micronaut Data inclui a capacidade de especificar requisitos de paginação com o tipo Pageable . Os mesmos conceitos existem no Spring Data com org.springframework.data.domain.Pageable .
+
+
+### Repositório
+
+
+O Micronaut Data e o Spring Data aprimoram o padrão de repositório ao fornecer interfaces paginadas a partir das quais você pode estender.
+
+O pacote Spring Data é org.springframework.data.repositorye o pacote Micronaut Data é io.micronaut.data.repository.
+
+![alt text](image-2.png)
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.data.jdbc.annotation.JdbcRepository;
+import io.micronaut.data.model.query.builder.sql.Dialect;
+import io.micronaut.data.repository.PageableRepository;
+
+@JdbcRepository(dialect = Dialect.H2)//1
+interface SaasSubscriptionRepository extends PageableRepository<SaasSubscription, Long> {//2
+}
+
+ ```
+
+1 - A anotação `@JdbcRepository` é usada para indicar que a interface é um repositório JDBC e o banco de dados é H2.
+2 - PageableRepository extends CrudRepository, which provides automatic generation of CRUD (Create, Read, Update, Delete) operations and adds methods for pagination.
+
+
+### Controlador
+
+```java
+package example.micronaut;
+
+import io.micronaut.data.model.Page;
+import io.micronaut.data.model.Pageable;
+import io.micronaut.data.model.Sort;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+
+@Controller("/subscriptions") //1
+class SaasSubscriptionGetListController {
+
+    private static final Sort CENTS = Sort.of(Sort.Order.asc("cents"));
+    private final SaasSubscriptionRepository repository;
+
+    SaasSubscriptionGetListController(SaasSubscriptionRepository repository) { //2
+        this.repository = repository;
+    }
+
+    @Get //3
+    Iterable<SaasSubscription> findAll(Pageable pageable) { //4
+        Page<SaasSubscription> page = repository.findAll(pageable.getSort().isSorted()
+                ? pageable
+                : Pageable.from(pageable.getNumber(), pageable.getSize(), CENTS)
+        );//5
+        return page.getContent();
+    }
+}
+
+ ```
+
+1 - A classe é definida como um controlador com a anotação `@Controller` mapeada para o caminho /subscriptions.
+2 - Use injeção de construtor para injetar um bean do tipo `SaasSubscriptionRepository`.
+3 - A anotação `@Get` mapeia o `findAll` método para uma solicitação HTTP GET em /subscriptions.
+4 - O método `findAll` recebe um objeto `Pageable` como parâmetro, que contém informações sobre a paginação e a ordenação dos resultados.
+5 - O método `findAll` chama o repositório para obter uma página de resultados. Se a solicitação não contiver informações de ordenação, o método aplica uma ordenação padrão com base no campo cents.
+
+### Testes
+
+```java
+
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.uri.UriBuilder;
+import io.micronaut.test.annotation.Sql;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import net.minidev.json.JSONArray;
+import org.junit.jupiter.api.Test;
+
+import java.net.URI;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@Sql(value = {"classpath:schema.sql", "classpath:data.sql"}) //1
+@MicronautTest//2
+class SaasSubscriptionGetListControllerTest {
+
+    @Inject
+    @Client("/") //3
+    HttpClient httpClient;
+
+    @Test
+    void shouldReturnASortedPageOfSaasSubscriptions() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        URI uri = UriBuilder.of("/subscriptions")
+                .queryParam("page", 0)
+                .queryParam("size", 1)
+                .queryParam("sort", "cents,desc")
+                .build();
+        HttpResponse<String> response = client.exchange(HttpRequest.GET(uri), String.class);
+        assertThat(response.status().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(response.body());
+        JSONArray page = documentContext.read("$[*]");
+        assertThat(page).hasSize(1);
+
+        Integer cents = documentContext.read("$[0].cents");
+        assertThat(cents).isEqualTo(4900);
+    }
+
+    @Test
+    void shouldReturnAPageOfSaasSubscriptions() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        URI uri = UriBuilder.of("/subscriptions")
+                .queryParam("page", 0)
+                .queryParam("size", 1)
+                .build();
+        HttpResponse<String> response = client.exchange(HttpRequest.GET(uri), String.class);
+        assertThat(response.status().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(response.body());
+        JSONArray page = documentContext.read("$[*]");
+        assertThat(page.size()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldReturnAllSaasSubscriptionsWhenListIsRequested() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        HttpResponse<String> response = client.exchange("/subscriptions", String.class);
+        assertThat(response.status().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(response.body());
+        int saasSubscriptionCount = documentContext.read("$.length()");
+        assertThat(saasSubscriptionCount).isEqualTo(3);
+
+        JSONArray ids = documentContext.read("$..id");
+        assertThat(ids).containsExactlyInAnyOrder(99, 100, 101);
+
+        JSONArray cents = documentContext.read("$..cents");
+        assertThat(cents).containsExactlyInAnyOrder(1400, 2900, 4900);
+    }
+}
+
+```
+
+### Conclusão
+
+Adicionar paginação à camada de persistência é fácil em ambas as estruturas, e a API é quase idêntica. No entanto, a abordagem sem reflexão e em tempo de compilação da Micronaut Data resulta em melhor desempenho, rastreamentos de pilha menores e consumo de memória reduzido.
