@@ -1356,6 +1356,7 @@ class SaasSubscriptionController {
 4 - O método `findById` recebe o id como parâmetro e retorna um objeto `HttpResponse<SaasSubscription>`, que é a resposta HTTP.
 5 -	Você pode vincular java.security.Principalcomo parâmetro de um método em um controlador.
 6 - O método `findById` chama o repositório para obter uma assinatura com base no id e no nome do proprietário. Se a assinatura for encontrada, o método retorna um objeto `HttpResponse` com o status HTTP 200 (OK) e o objeto `SaasSubscription` como corpo da resposta. Caso contrário, ele retorna um objeto `HttpResponse` com o status HTTP 404 (NOT FOUND).
+
 ### Testes
 
 ```java
