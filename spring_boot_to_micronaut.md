@@ -1190,3 +1190,222 @@ class SaasSubscriptionGetListControllerTest {
 ### Conclusão
 
 Adicionar paginação à camada de persistência é fácil em ambas as estruturas, e a API é quase idêntica. No entanto, a abordagem sem reflexão e em tempo de compilação da Micronaut Data resulta em melhor desempenho, rastreamentos de pilha menores e consumo de memória reduzido.
+
+## Security Basic Authentication
+
+Este guia é o sexto tutorial de Construindo uma API REST - uma série de tutoriais que comparam como desenvolver uma API REST com o Micronaut Framework e o Spring Boot.
+
+Neste tutorial, protegemos a API por meio de autenticação básica . Somente usuários com a função SAAS_SUBSCRIPTION_OWNERpodem acessar os endpoints. Cada assinatura é associada a um usuário. Usuários autenticados podem acessar apenas suas próprias assinaturas.
+
+### Micronaut Security
+
+No aplicativo Micronaut, adicione o Micronaut Security e o Spring Security Crypto . Usamos este último para criptografar a senha do usuário usando o BCrypt.
+
+```gradle
+implementation("io.micronaut.security:micronaut-security")
+implementation("org.springframework.security:spring-security-crypto:6.2.0")
+```
+
+### Entidade
+
+```java
+package example.micronaut;
+
+import io.micronaut.data.annotation.GeneratedValue;
+import io.micronaut.serde.annotation.Serdeable;
+import io.micronaut.data.annotation.Id;
+import io.micronaut.data.annotation.MappedEntity;
+
+@Serdeable//1
+@MappedEntity //2
+record SaasSubscription(@Id //2
+                        @GeneratedValue //3
+                        Long id,
+                        String name,
+                        Integer cents,
+                        String owner) {
+}
+
+```
+
+1 - A anotação `@Serdeable` é usada para indicar que a classe pode ser serializada e desserializada pelo Micronaut.
+2 - A anotação `@MappedEntity` é usada para indicar que a classe é uma entidade mapeada para uma tabela no banco de dados.
+3 - A anotação `@GeneratedValue` é usada para indicar que o campo id é gerado automaticamente pelo banco de dados. Isso significa que o valor do id será atribuído pelo banco de dados quando um novo registro for inserido na tabela.
+3 - A anotação `@Id` é usada para indicar que o campo id é a chave primária da entidade.
+
+### Repositório
+
+```java
+package example.micronaut;
+
+import io.micronaut.data.jdbc.annotation.JdbcRepository;
+import io.micronaut.data.model.Page;
+import io.micronaut.data.model.Pageable;
+import io.micronaut.data.model.query.builder.sql.Dialect;
+import io.micronaut.data.repository.PageableRepository;
+
+import java.util.Optional;
+
+@JdbcRepository(dialect = Dialect.H2)
+interface SaasSubscriptionRepository extends PageableRepository<SaasSubscription, Long> {
+
+    Optional<SaasSubscription> findByIdAndOwner(Long id, String owner);
+
+    Page<SaasSubscription> findByOwner(String owner, Pageable pageRequest);
+}
+
+```
+
+1 - A anotação `@JdbcRepository` é usada para indicar que a interface é um repositório JDBC e o banco de dados é H2.
+2 - PageableRepository extends CrudRepository, which provides automatic generation of CRUD (Create, Read, Update, Delete) operations and adds methods for pagination.
+3 - A interface `SaasSubscriptionRepository` estende a interface `PageableRepository`, que fornece métodos para operações de paginação.
+
+
+### Configuração de segurança
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.core.annotation.NonNull;
+import io.micronaut.core.annotation.Nullable;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.security.authentication.Authentication;
+import io.micronaut.security.authentication.AuthenticationRequest;
+import io.micronaut.security.authentication.AuthenticationResponse;
+import io.micronaut.security.authentication.provider.HttpRequestAuthenticationProvider;
+import jakarta.inject.Singleton;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Optional;
+
+@Singleton  //1
+class AppAuthenticationProvider<B> implements HttpRequestAuthenticationProvider<B> {
+
+    private static final String KEY_PASSWORD = "password";
+    private final Map<String, Authentication> users;
+    private final PasswordEncoder passwordEncoder;
+
+    AppAuthenticationProvider() {
+        passwordEncoder = new BCryptPasswordEncoder();
+        users = Map.of("sarah1",
+                Authentication.build("sarah1",
+                        Collections.singletonList("SAAS_SUBSCRIPTION_OWNER"),
+                        Collections.singletonMap(KEY_PASSWORD, passwordEncoder.encode("abc123"))),
+                "john-owns-no-subscriptions",
+                Authentication.build("john-owns-no-subscriptions",
+                        Collections.singletonList("NON-OWNER"),
+                        Collections.singletonMap(KEY_PASSWORD, passwordEncoder.encode("qrs456"))));
+    }
+
+    @Override
+    public @NonNull AuthenticationResponse authenticate(@Nullable HttpRequest<B> request,
+                                                        @NonNull AuthenticationRequest<String, String> form) {
+        return Optional.ofNullable(users.get(form.getIdentity()))
+                .filter(a -> passwordEncoder.matches(form.getSecret(), a.getAttributes().get(KEY_PASSWORD).toString()))
+                .map(authentication -> AuthenticationResponse.success(form.getIdentity(), authentication.getRoles()))
+                .orElse(AuthenticationResponse.failure());
+    }
+}
+
+```
+
+1 - A anotação `@Singleton` é usada para indicar que a classe é um singleton, ou seja, uma única instância da classe será criada e compartilhada em toda a aplicação.
+
+## Controller
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.PathVariable;
+import java.security.Principal;
+import io.micronaut.security.annotation.Secured;
+
+@Controller("/subscriptions") //1
+@Secured("SAAS_SUBSCRIPTION_OWNER")//2
+class SaasSubscriptionController {
+
+    private final SaasSubscriptionRepository repository;
+
+    SaasSubscriptionController(SaasSubscriptionRepository repository) {//3
+        this.repository = repository;
+    }
+
+    @Get("/{id}")
+    HttpResponse<SaasSubscription> findById(@PathVariable Long id, //4
+                                            Principal principal) {//5
+        return repository.findByIdAndOwner(id, principal.getName())
+                .map(HttpResponse::ok)//6
+                .orElseGet(HttpResponse::notFound);
+    }
+}
+
+```
+
+
+1 - A classe é definida como um controlador com a anotação `@Controller` mapeada para o caminho /subscriptions.
+2 - A anotação `@Secured` é usada para proteger o controlador com a função SAAS_SUBSCRIPTION_OWNER. Isso significa que apenas usuários autenticados com essa função podem acessar os métodos do controlador.
+3 - Use injeção de construtor para injetar um bean do tipo `SaasSubscriptionRepository`.
+4 - O método `findById` recebe o id como parâmetro e retorna um objeto `HttpResponse<SaasSubscription>`, que é a resposta HTTP.
+5 -	Você pode vincular java.security.Principalcomo parâmetro de um método em um controlador.
+6 - O método `findById` chama o repositório para obter uma assinatura com base no id e no nome do proprietário. Se a assinatura for encontrada, o método retorna um objeto `HttpResponse` com o status HTTP 200 (OK) e o objeto `SaasSubscription` como corpo da resposta. Caso contrário, ele retorna um objeto `HttpResponse` com o status HTTP 404 (NOT FOUND).
+### Testes
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import io.micronaut.test.annotation.Sql;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.catchThrowableOfType;
+
+@Sql(value = {"classpath:schema.sql", "classpath:data.sql"})
+@MicronautTest
+class SecurityTest {
+
+    @Test
+    void shouldNotAllowAccessToSaasSubscriptionsTheyDoNotOwn(@Client("/") HttpClient httpClient) {
+        HttpRequest<?> request = HttpRequest.GET("/subscriptions/102")
+                .basicAuth("sarah1", "abc123");
+        HttpClientResponseException thrown = catchThrowableOfType(() ->
+                httpClient.toBlocking().exchange(request, String.class), HttpClientResponseException.class);
+        assertThat(thrown.getStatus().getCode()).isEqualTo(HttpStatus.NOT_FOUND.getCode());
+    }
+
+    @Test
+    void shouldRejectUsersWhoAreNotSubscriptionOwners(@Client("/") HttpClient httpClient) {
+        HttpRequest<?> badPasswordRequest = HttpRequest.GET("/subscriptions/99")
+                .basicAuth("john-owns-no-subscriptions", "qrs456");
+        HttpClientResponseException badPasswordEx = catchThrowableOfType(() ->
+                httpClient.toBlocking().exchange(badPasswordRequest, String.class), HttpClientResponseException.class);
+        assertThat(badPasswordEx.getStatus().getCode()).isEqualTo(HttpStatus.FORBIDDEN.getCode());
+    }
+
+    @Test
+    void shouldNotReturnASaasSubscriptionWithAnUnknownId(@Client("/") HttpClient httpClient) {
+        HttpRequest<?> request = HttpRequest.GET("/subscriptions/1000")
+                .basicAuth("sarah1", "BAD-PASSWORD");
+        HttpClientResponseException ex = catchThrowableOfType(() ->
+                httpClient.toBlocking().exchange(request, String.class), HttpClientResponseException.class);
+        assertThat(ex.getStatus().getCode()).isEqualTo(HttpStatus.UNAUTHORIZED.getCode());
+    }
+}
+
+```
+
+Como você pode ver neste tutorial, proteger uma API REST com autenticação básica é simples tanto no Micronaut quanto no Spring Boot. A configuração de segurança difere entre os dois frameworks, mas a experiência de codificação para acessar o usuário autenticado como um parâmetro do tipo método do Controlador java.security.Principalé idêntica.
