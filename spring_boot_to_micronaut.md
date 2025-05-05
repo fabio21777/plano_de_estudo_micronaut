@@ -543,3 +543,161 @@ Como mostrado neste tutorial, testar serialização no Micronaut Framework e no 
 
 
 
+## Implementando GET  spring boot vs micronaut
+
+
+Este guia compara como testar a implementação de um GET em um Micronaut Framework e em aplicativos Spring Boot.
+
+Este guia é o segundo tutorial de Construindo uma API REST - uma série de tutoriais que comparam como desenvolver uma API REST com o Micronaut Framework e o Spring Boot.
+
+![alt text](image.png)
+
+> Outra diferença importante é a visibilidade dos métodos do controlador. **O Micronaut Framework não utiliza reflexão (o que resulta em melhor desempenho e melhor integração com tecnologias como GraalVM)** . Portanto, ele exige que os métodos do controlador sejam públicos, protegidos ou privados (sem modificadores). Ao longo destes tutoriais, os métodos dos controladores Micronaut utilizam privados.
+
+### Controlador no Spring Boot
+
+```java
+
+package example.micronaut;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController //1
+@RequestMapping("/subscriptions") //2
+class SaasSubscriptionController {
+
+    @GetMapping("/{id}") //3
+    private ResponseEntity<SaasSubscription> findById(@PathVariable Long id) { //4
+        if (id.equals(99L)) {
+            SaasSubscription subscription = new SaasSubscription(99L, "Advanced", 2900);
+            return ResponseEntity.ok(subscription);
+        }
+        return ResponseEntity.notFound().build(); //5
+    }
+}
+
+```
+
+1 - A anotação `@RestController` é usada para definir a classe como um controlador REST, o que significa que ela pode manipular requisições HTTP e retornar respostas HTTP.
+2 - A anotação `@RequestMapping` é usada para definir o caminho base da requisição, que neste caso é `/subscriptions`.
+3 - A anotação `@GetMapping` é usada para definir o método como um endpoint HTTP do tipo GET, ou seja, ele será chamado quando uma requisição GET for feita para o caminho `/subscriptions/{id}`.
+4 - O método `findById` recebe o id como parâmetro e retorna um objeto `ResponseEntity<SaasSubscription>`, que é a resposta HTTP.
+5 - Se o id for igual a 99, o método retorna um objeto `ResponseEntity` com o status HTTP 200 (OK) e o objeto `SaasSubscription` como corpo da resposta. Caso contrário, ele retorna um objeto `ResponseEntity` com o status HTTP 404 (NOT FOUND).
+
+
+### Controlador no Micronaut
+
+```java
+package example.micronaut;
+
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.PathVariable;
+
+@Controller("/subscriptions") //1
+class SaasSubscriptionController {
+
+    @Get("/{id}")//2
+    HttpResponse<SaasSubscription> findById(@PathVariable Long id) { //3
+        if (id.equals(99L)) {
+            SaasSubscription subscription = new SaasSubscription(99L, "Advanced", 2900);
+            return HttpResponse.ok(subscription);
+        }
+        return HttpResponse.notFound(); //4
+    }
+}
+
+//versão simplificada com retorno nulo
+@Controller("/subscriptions")
+class SaasSubscriptionController {
+
+    @Get("/{id}")
+    SaasSubscription findById(@PathVariable Long id) {
+        if (id.equals(99L)) {
+            return new SaasSubscription(99L, "Advanced", 2900);
+        }
+        return null;
+    }
+}
+
+```
+
+1 - A anotação `@Controller` é usada para definir a classe como um controlador REST, o que significa que ela pode manipular requisições HTTP e retornar respostas HTTP.
+2 - A anotação `@Get` é usada para definir o método como um endpoint HTTP do tipo GET, ou seja, ele será chamado quando uma requisição GET for feita para o caminho `/subscriptions/{id}`.
+3 - O método `findById` recebe o id como parâmetro e retorna um objeto `HttpResponse<SaasSubscription>`, que é a resposta HTTP.
+4 - Se o id for igual a 99, o método retorna um objeto `HttpResponse` com o status HTTP 200 (OK) e o objeto `SaasSubscription` como corpo da resposta. Caso contrário, ele retorna um objeto `HttpResponse` com o status HTTP 404 (NOT FOUND).
+
+> O código de status HTTP padrão em um método do controlador Micronaut é 200. No entanto, quando o método de um controlador Micronaut retorna nulo, o aplicativo responde com um código de status 404.
+
+
+### Testes
+
+```java
+
+package example.micronaut;
+
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.http.client.exceptions.HttpClientResponseException;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.catchThrowableOfType;
+
+@MicronautTest //1
+class SaasSubscriptionControllerGetTest {
+
+    @Inject //2
+    @Client("/") //3
+    HttpClient httpClient;
+
+    @Test
+    void shouldReturnASaasSubscriptionWhenDataIsSaved() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        HttpResponse<String> response = client.exchange("/subscriptions/99", String.class);
+        assertThat(response.status().getCode()).isEqualTo(HttpStatus.OK.getCode());
+
+        DocumentContext documentContext = JsonPath.parse(response.body());
+        Number id = documentContext.read("$.id");
+        assertThat(id).isNotNull();
+        assertThat(id).isEqualTo(99);
+
+        String name = documentContext.read("$.name");
+        assertThat(name).isNotNull();
+        assertThat(name).isEqualTo("Advanced");
+
+        Integer cents = documentContext.read("$.cents");
+        assertThat(cents).isEqualTo(2900);
+    }
+
+    @Test
+    void shouldNotReturnASaasSubscriptionWithAnUnknownId() {
+        BlockingHttpClient client = httpClient.toBlocking();
+        HttpClientResponseException thrown = catchThrowableOfType(() -> //4
+                client.exchange("/subscriptions/1000", String.class), HttpClientResponseException.class);
+        assertThat(thrown.getStatus().getCode()).isEqualTo(HttpStatus.NOT_FOUND.getCode());
+        assertThat(thrown.getResponse().getBody()).isEmpty();
+    }
+}
+
+```
+
+1 - Anote a classe com `@MicronautTest` para que o framework Micronaut inicialize o contexto da aplicação e o servidor embarcado. Mais informações .
+2 - Injete o `HttpClient` bean e aponte-o para o servidor incorporado.
+3 - Quando o cliente HTTP recebe uma resposta com um código de status HTTP >= 400, ele lança um `HttpClientResponseException`. Você pode obter o status e o corpo da resposta a partir da exceção.
+
+
+### Conclusão
+
+A definição de rotas é extremamente semelhante em ambos os frameworks. No entanto, o Micronaut Framework oferece validação de rotas em tempo de compilação e uma abordagem sem reflexão para isso.
