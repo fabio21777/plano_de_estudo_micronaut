@@ -102,3 +102,7 @@ public class InfoTest {
     }
 }
 ```
+
+## [Using IntelliJ IDEA to develop Micronaut applications](https://guides.micronaut.io/latest/micronaut-intellij-idea-ide-setup-maven-java.html)
+
+
