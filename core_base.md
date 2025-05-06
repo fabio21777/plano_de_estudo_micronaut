@@ -491,4 +491,134 @@ public class MyControllerTest {
 }
 ```
 
-# teste
+## [Micronaut Dependency Injection Types](https://guides.micronaut.io/latest/micronaut-dependency-injection-types.html)
+
+Injeção de parâmetros de construtor, campo e método.
+
+O que é uma dependência? A Classe A tem uma dependência da Classe B quando interage com ela de alguma forma. Por exemplo, a Classe A executa um método em uma instância da Classe B. Normalmente, não se instanciam dependências de classe ao usar o mecanismo de injeção de dependências do Micronaut Framework. Em vez disso, confia-se ao framework para fornecer instâncias de dependência.
+
+### jakarta.inject vs javax.inject
+
+As primeiras versões do Micronaut Framework utilizavam *javax.inject* anotações. Devido a restrições de marca registrada impostas ao *javax.*namespace*, o framework Micronaut migrou das anotações *javax.injectpara* para as  *jakarta.inject* anotações. Desde a versão 2.4 , o framework Micronaut suporta *jakarta.inject* anotações. Além disso, o Micronaut Framework migrou para jakarta.injecto conjunto de anotações incluído por padrão, e recomendamos fortemente que você o utilize *jakarta.inject* daqui para frente.
+
+### Injeção de dependência
+
+O Micronaut Framework oferece três tipos de injeção de dependência
+
+
+### Injeção de construtor
+
+Na injeção baseada em construtor, o Micronaut Framework fornece as dependências necessárias para a classe como argumentos para o construtor.
+
+```java
+
+package example.micronaut.constructor;
+
+import example.micronaut.MessageService;
+import io.micronaut.http.MediaType;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Produces;
+
+@Controller("/constructor")
+class MessageController {
+    private final MessageService messageService;
+
+    MessageController(MessageService messageService) {
+        this.messageService = messageService;
+    }
+
+    @Get
+    @Produces(MediaType.TEXT_PLAIN)
+    String index() {
+        return messageService.compose();
+    }
+}
+
+```
+
+### Injeção de campo
+
+Com a injeção de campo, o Micronaut preenche os pontos finais de injeção para campos anotados com jakarta.inject.Inject.
+
+```java
+
+package example.micronaut.field;
+
+import example.micronaut.MessageService;
+import io.micronaut.http.MediaType;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Produces;
+import jakarta.inject.Inject;
+
+@Controller("/field")
+class MessageController {
+    @Inject // aqui ocorrerá a injeção
+    MessageService messageService;
+
+    @Get
+    @Produces(MediaType.TEXT_PLAIN)
+    String index() {
+        return messageService.compose();
+    }
+}
+```
+
+A injeção de campo dificulta a compreensão dos requisitos de uma classe, facilitando a obtenção de uma resposta NullPointerExceptionao testar uma classe usando injeção de campo. Recomendamos o uso de injeção de construtor .
+
+> O exemplo de código anterior usa um campo com o modificador de acesso default. Existem quatro tipos de modificadores de acesso disponíveis em Java: *private*, *protected*, *public* e o default. A injeção de campo funciona com todos eles. No entanto, a injeção de campo em um campo com *private* modificador de acesso requer reflexão. Portanto, recomendamos que você não use private.
+> Use injeção de campo em classes de teste anotadas com MicronautTest. O Micronaut não instancia a classe de teste. Portanto, você não pode usar injeção de construtor nessas classes.
+>
+
+
+### Injeção de método
+
+Para injeção de parâmetros de método, você define um método com um ou mais parâmetros e anota o método com a jakarta.inject.Inject anotação. O Micronaut Framework fornece os parâmetros necessários para o método.
+
+```java
+
+package example.micronaut.methodparameter;
+
+import example.micronaut.MessageService;
+import io.micronaut.http.MediaType;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Produces;
+import jakarta.inject.Inject;
+
+@Controller("/setter")
+class MessageController {
+    private MessageService messageService;
+
+    @Get
+    @Produces(MediaType.TEXT_PLAIN)
+    String index() {
+        return messageService.compose();
+    }
+
+    @Inject
+    void populateMessageService(MessageService messageService) {
+        this.messageService = messageService;
+    }
+}
+
+```
+
+### Benefícios da injeção de construtor
+
+#### Contrato claro
+
+A injeção de construtor expressa claramente os requisitos da classe e não requer nenhuma anotação adicional.
+
+#### Imutabilidade
+
+A injeção de construtor permite definir dependências `final`, criando objetos imutáveis.
+
+#### Identificando odores de código
+
+A injeção de construtor ajuda você a identificar facilmente se seu bean depende de muitos outros objetos.
+
+#### Teste
+
+A injeção de construtor simplifica a escrita de testes unitários e de integração. O construtor nos obriga a fornecer objetos válidos para todas as dependências. Assim, diminui a chance de ocorrência de uma NullPointerException durante os testes.
