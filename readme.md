@@ -29,3 +29,7 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 ## Desenvolvimento
 
 [Desenvolvimento.md](desenvolvimento.md)
+
+## Testes
+
+[Testes.md](testing.md)
