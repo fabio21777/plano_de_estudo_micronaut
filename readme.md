@@ -20,3 +20,6 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 ## Core base Micronaut
 
 [Core base Micronaut.md](core_base.md)
+
+## Validação micronaut
+[Validação micronaut.md](validação.md)
