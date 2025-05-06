@@ -622,3 +622,474 @@ A injeção de construtor ajuda você a identificar facilmente se seu bean depen
 #### Teste
 
 A injeção de construtor simplifica a escrita de testes unitários e de integração. O construtor nos obriga a fornecer objetos válidos para todas as dependências. Assim, diminui a chance de ocorrência de uma NullPointerException durante os testes.
+
+
+## [Tipos de escopo Micronaut](https://guides.micronaut.io/latest/micronaut-scope-types-maven-java.html)
+
+
+O Micronaut apresenta um mecanismo de escopo de bean extensível baseado no JSR-330 .
+
+
+## Cenario
+
+```java
+package example.micronaut.singleton;
+
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+
+import java.util.Arrays;
+import java.util.List;
+
+@Controller("/singleton")
+
+public class RobotController {
+
+    private final RobotFather father; //será injetado como singleton
+    private final RobotMother mother; //será injetado como singleton
+
+    public RobotController(RobotFather father,
+                           RobotMother mother) {
+        this.father = father;
+        this.mother = mother;
+    }
+
+    @Get
+    List<String> children() {
+        return Arrays.asList(
+                father.child().getSerialNumber(),
+                mother.child().getSerialNumber()
+        );
+    }
+}
+
+package example.micronaut.singleton;
+
+import io.micronaut.core.annotation.NonNull;
+import jakarta.inject.Singleton;
+
+@Singleton
+public class RobotFather {
+    private final Robot robot;
+
+    public RobotFather(Robot robot) {
+        this.robot = robot;
+    }
+
+    @NonNull
+    public Robot child() {
+        return this.robot;
+    }
+}
+
+package example.micronaut.singleton;
+
+import io.micronaut.core.annotation.NonNull;
+import jakarta.inject.Singleton;
+
+@Singleton
+public class RobotMother {
+    private final Robot robot;
+
+    public RobotMother(Robot robot) {
+        this.robot = robot;
+    }
+
+    @NonNull
+    public Robot child() {
+        return this.robot;
+    }
+}
+
+```
+
+### Singleton
+
+
+O escopo singleton indica que existirá apenas uma instância do bean .
+
+Para definir um singleton, anote uma classe com *jakarta.inject.Singleton* no nível de classe.
+
+A classe a seguir cria um identificador único no construtor. Esse identificador nos permite identificar quantas *Robotin* stâncias são usadas.
+
+```java
+
+package example.micronaut.singleton;
+
+import io.micronaut.core.annotation.NonNull;
+import jakarta.inject.Singleton;
+
+import java.util.UUID;
+
+@Singleton
+public class Robot {
+    @NonNull
+    private final String serialNumber;
+
+    public Robot() {
+        serialNumber = UUID.randomUUID().toString();
+    }
+
+    @NonNull
+    public String getSerialNumber() {
+        return serialNumber;
+    }
+}
+
+```
+
+### Testando o singleton
+
+```java
+
+import io.micronaut.core.type.Argument;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@MicronautTest
+class SingletonScopeTest {
+    @Inject
+    @Client("/")
+    HttpClient httpClient;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/singleton"})
+
+    void onlyOneInstanceOfTheBeanExistsForSingletonBeans(String path) {
+        BlockingHttpClient client = httpClient.toBlocking();
+        Set<String> responses = new HashSet<>(executeRequest(client, path));
+        assertEquals(1, responses.size());
+        responses.addAll(executeRequest(client, path));
+        assertEquals(1, responses.size());
+    }
+
+    List<String> executeRequest(BlockingHttpClient client, String path) {
+        return client.retrieve(HttpRequest.GET(path),
+          Argument.listOf(String.class));
+    }
+}
+
+```
+
+### Prototype
+
+O escopo do protótipo indica que uma nova instância do bean é criada cada vez que ele é injetado
+
+Vamos usar @Prototypeem vez de @Singleton.
+
+```java
+package example.micronaut.prototype;
+
+import io.micronaut.context.annotation.Prototype;
+import io.micronaut.core.annotation.NonNull;
+
+import java.util.UUID;
+
+@Prototype
+public class Robot {
+    @NonNull
+    private final String serialNumber;
+
+    public Robot() {
+        serialNumber = UUID.randomUUID().toString();
+    }
+
+    @NonNull
+    public String getSerialNumber() {
+        return serialNumber;
+    }
+}
+```
+
+
+Use io.micronaut.context.annotation.Prototypepara designar o escopo do bean como Protótipo - um escopo não singleton que cria um novo bean para cada ponto de injeção.
+
+
+```java
+import io.micronaut.core.type.Argument;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@MicronautTest
+class PrototypeScopeTest {
+    @Inject
+    @Client("/")
+    HttpClient httpClient;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/prototype"})
+
+    void prototypeScopeIndicatesThatANewInstanceOfTheBeanIsCreatedEachTimeItIsInjected(String path) {
+      BlockingHttpClient client = httpClient.toBlocking();
+      Set<String> responses = new HashSet<>(executeRequest(client, path));
+      assertEquals(2, responses.size());
+      responses.addAll(executeRequest(client, path));
+      assertEquals(2, responses.size());
+    }
+
+    private List<String> executeRequest(BlockingHttpClient client, String path) {
+      return client.retrieve(HttpRequest.GET(path), Argument.listOf(String.class));
+    }
+}
+
+```
+
+### RequestScoped
+
+
+RequestScope scope é um escopo personalizado que indica que uma nova instância do bean é criada e associada a cada solicitação HTTP
+
+```java
+package example.micronaut.request;
+
+import io.micronaut.core.annotation.NonNull;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.runtime.http.scope.RequestAware;
+import io.micronaut.runtime.http.scope.RequestScope;
+import java.util.Objects;
+
+@RequestScope
+public class Robot implements RequestAware {
+    @NonNull
+    private String serialNumber;
+
+    @NonNull
+    public String getSerialNumber() {
+        return serialNumber;
+    }
+
+    @Override
+    public void setRequest(HttpRequest<?> request) {
+        this.serialNumber = Objects.requireNonNull(request.getHeaders().get("UUID"));
+    }
+}
+```
+
+1. Use io.micronaut.runtime.http.scope.RequestScopepara designar o escopo do bean como Solicitação - uma nova instância do bean é criada e associada a cada solicitação HTTP.
+2. RequestAwareA API permite que @RequestScopeos beans acessem a requisição atual.
+
+### Teste
+
+```java
+import io.micronaut.core.type.Argument;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.Test;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@MicronautTest
+class RequestScopeTest {
+    @Inject
+    @Client("/")
+    HttpClient httpClient;
+
+    @Test
+    void requestScopeScopeIsACustomScopeThatIndicatesANewInstanceOfTheBeanIsCreatedAndAssociatedWithEachHTTPRequest() {
+        String path = "/request";
+        BlockingHttpClient client = httpClient.toBlocking();
+        Set<String> responses = new HashSet<>(executeRequest(client, path));
+        assertEquals(1, responses.size());
+        responses.addAll(executeRequest(client, path));
+        assertEquals(2, responses.size());
+    }
+
+    private List<String> executeRequest(BlockingHttpClient client,
+                                        String path) {
+        return client.retrieve(createRequest(path), Argument.listOf(String.class));
+    }
+    private HttpRequest<?> createRequest(String path) {
+        return HttpRequest.GET(path).header("UUID", UUID.randomUUID().toString());
+    }
+}
+```
+
+## RefreshScope
+
+O escopo atualizável é um escopo personalizado que permite que o estado de um bean seja atualizado.
+
+
+```java
+
+package example.micronaut.refreshable;
+
+import io.micronaut.core.annotation.NonNull;
+import io.micronaut.runtime.context.scope.Refreshable;
+import java.util.UUID;
+
+@Refreshable
+public class Robot {
+    @NonNull
+    private final String serialNumber;
+
+    public Robot() {
+        serialNumber = UUID.randomUUID().toString();
+    }
+
+    @NonNull
+    public String getSerialNumber() {
+        return serialNumber;
+    }
+}
+
+import io.micronaut.context.annotation.Property;
+import io.micronaut.core.type.Argument;
+import io.micronaut.core.util.StringUtils;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.Test;
+
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@Property(name = "endpoints.refresh.enabled", value = StringUtils.TRUE)
+@Property(name = "endpoints.refresh.sensitive", value = StringUtils.FALSE)
+@MicronautTest
+class RefreshableScopeTest {
+    @Inject
+    @Client("/")
+    HttpClient httpClient;
+
+    @Test
+    void refreshableScopeIsACustomScopeThatAllowsABeansStateToBeRefreshedViaTheRefreshEndpoint() {
+
+        String path = "/refreshable";
+        BlockingHttpClient client = httpClient.toBlocking();
+        Set<String> responses = new HashSet<>(executeRequest(client, path));
+        assertEquals(1, responses.size());
+        responses.addAll(executeRequest(client, path));
+        assertEquals(1, responses.size());
+        refresh(client);
+        responses.addAll(executeRequest(client, path));
+        assertEquals(2, responses.size());
+    }
+
+    private void refresh(BlockingHttpClient client) {
+        client.exchange(HttpRequest.POST("/refresh",
+                        Collections.singletonMap("force", true)));
+    }
+
+    private List<String> executeRequest(BlockingHttpClient client, String path) {
+        return client.retrieve(HttpRequest.GET(path),
+                               Argument.listOf(String.class));
+    }
+}
+
+```
+
+### Context
+
+
+O escopo do contexto indica que o bean será criado ao mesmo tempo que o ApplicationContext (inicialização rápida)
+
+O exemplo a seguir usa @Contextem combinação com @ConfigurationProperties.
+
+```java
+
+package example.micronaut.context;
+
+import io.micronaut.context.annotation.ConfigurationProperties;
+import io.micronaut.context.annotation.Context;
+import jakarta.validation.constraints.Pattern;
+
+@Context//1
+@ConfigurationProperties("micronaut")//2
+public class MicronautConfiguration {
+
+    @Pattern(regexp = "groovy|java|kotlin") //3
+    private String language;
+
+    public String getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(String language) {
+        this.language = language;
+    }
+}
+
+```
+
+
+1. Use @Contextpara designar o escopo do bean como Contexto - o bean será criado ao mesmo tempo que o ApplicationContext (inicialização rápida).
+2. Use @ConfigurationPropertiespara designar o bean como um bean de configuração.
+3. Use @Patternpara validar o valor do bean.
+
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.context.ApplicationContext;
+import io.micronaut.context.exceptions.BeanInstantiationException;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+
+import java.util.Collections;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class ContextTest {
+
+    @Test
+    void lifeCycleOfClassesAnnotatedWithAtContextIsBoundToThatOfTheBeanContext() {
+        Executable e = () -> ApplicationContext.run(Collections.singletonMap("micronaut.language", "scala"));
+        BeanInstantiationException thrown = assertThrows(BeanInstantiationException.class, e);
+        assertTrue(thrown.getMessage().contains("language - must match \"groovy|java|kotlin\""));
+    }
+}
+
+```
+
+### Outros escopos
+
+O Micronaut Framework vem com outros escopos integrados:
+
+#### @Infraestrutura
+
+O *@Infraestrutura* escopo de infraestrutura representa um bean que não pode ser substituído ou anulado @Replaces porque é crítico para o funcionamento do sistema.
+
+#### @ThreadLocal
+
+O escopo @ThreadLocal é um escopo personalizado que associa um bean por thread por meio de um ThreadLocal
