@@ -33,3 +33,13 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 ## Testes
 
 [Testes.md](testing.md)
+
+
+## Log incoming HTTP Request headers with a Server Filter
+
+[logging](logging.md)
+
+## Schedule
+
+[Schedule](schedule.md)
+
