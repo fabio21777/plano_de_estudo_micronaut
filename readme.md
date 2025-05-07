@@ -48,3 +48,12 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 
 [Cache](cache.md)
 
+
+## Micronaut Patterns - Composite
+
+[Composite](composite.md)
+
+
+## DataBase Modeling
+
+[DataBase Modeling](database_modeling.md)
