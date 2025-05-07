@@ -43,3 +43,8 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 
 [Schedule](schedule.md)
 
+
+## Cache
+
+[Cache](cache.md)
+
