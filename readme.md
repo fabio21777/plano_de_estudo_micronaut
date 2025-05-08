@@ -62,3 +62,6 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 ## Data Jdbc
 
 [Data Jdbc](data_jdbc.md)
+
+## Data JPA
+[Data JPA](data_jpa.md)
