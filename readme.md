@@ -64,4 +64,9 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 [Data Jdbc](data_jdbc.md)
 
 ## Data JPA
+
 [Data JPA](data_jpa.md)
+
+## Schema Migration
+
+[Schema Migration](schema_migration.md)
