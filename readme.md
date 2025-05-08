@@ -70,3 +70,7 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 ## Schema Migration
 
 [Schema Migration](schema_migration.md)
+
+## Micronaut Security
+
+[Micronaut Security](micronaut_security.md)
