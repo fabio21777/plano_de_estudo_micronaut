@@ -357,3 +357,147 @@ public class GithubFilter {
     }
 }
 ```
+
+## Download a big file with StreamingHttpClient
+
+
+### Cliente HTTP do Micronaut Reactor
+
+Para usar uma implementação do Micronaut HTTP Client com base no Project Reactor , adicione a seguinte dependência:
+
+```xml
+<dependency>
+	<groupId>io.micronaut.reactor</groupId>
+	<artifactId>micronaut-http-client-reactor</artifactId>
+	<scope>compile</scope>
+</dependency>
+```
+
+### Controlador
+
+```java
+package example.micronaut;
+
+import io.micronaut.context.exceptions.ConfigurationException;
+import io.micronaut.core.io.buffer.ByteBuffer;
+import io.micronaut.core.io.buffer.ReferenceCounted;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.reactor.http.client.ReactorStreamingHttpClient;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.core.publisher.Flux;
+
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
+
+@Controller
+class HomeController implements AutoCloseable {
+    private static final Logger LOG = LoggerFactory.getLogger(HomeController.class);
+    private static final URI DEFAULT_URI = URI.create("https://guides.micronaut.io/micronaut5K.png");
+
+    private final ReactorStreamingHttpClient reactorStreamingHttpClient;
+
+    HomeController() {
+        String urlStr = "https://guides.micronaut.io/";
+        URL url;
+        try {
+            url = new URL(urlStr);
+        } catch (MalformedURLException e) {
+            throw new ConfigurationException("malformed URL" + urlStr);
+        }
+        this.reactorStreamingHttpClient = ReactorStreamingHttpClient.create(url);
+    }
+
+    @Get
+    Flux<ByteBuffer<?>> download() {
+        HttpRequest<?> request = HttpRequest.GET(DEFAULT_URI);
+        return reactorStreamingHttpClient.dataStream(request).doOnNext(bb -> {
+            if (bb instanceof ReferenceCounted rc) {
+                rc.retain();
+            }
+        });
+    }
+
+    @PreDestroy
+    @Override
+    public void close() {
+        if (reactorStreamingHttpClient != null) {
+            reactorStreamingHttpClient.close();
+        }
+    }
+}
+```
+
+1. A classe é definida como um controlador com a anotação [@Controller](https://docs.micronaut.io/latest/api/io/micronaut/http/annotation/Controller.html) mapeada para o caminho `/`.
+
+2. [ReactorStreamingHttpClient](https://micronaut-projects.github.io/micronaut-reactor/latest/guide/) é uma variação da interface `StreamingHttpClient` do Projeto Reactor, que estende o HttpClient para oferecer suporte ao streaming de respostas.
+
+3. A anotação [@Get](https://docs.micronaut.io/latest/api/io/micronaut/http/annotation/Get.html) mapeia o método para uma solicitação HTTP GET.
+
+4. O método `dataStream` emite instâncias de `ByteBuffer`. Essas instâncias são coletadas como lixo após a emissão de cada bloco. Para propagar os blocos para o fluxo de resposta, eles precisam ser retidos chamando o método `retain()`. O framework chamará `release()` nesses blocos coletados como lixo assim que cada um for gravado na resposta.
+
+5. Para invocar um método quando o bean é destruído, use a anotação `jakarta.annotation.PreDestroy`.
+
+### Teste
+
+crie um teste que verifique se o hash de download do controlador corresponde ao mesmo hash de arquivo, que também está armazenado em src/test/resources.
+
+```java
+package example.micronaut;
+
+import io.micronaut.core.io.ResourceLoader;
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledInNativeImage;
+
+import java.io.IOException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@MicronautTest
+class HomeControllerTest {
+
+    private final HexFormat hexFormat = HexFormat.of();
+
+    @DisabledInNativeImage
+    @Test
+    void downloadFile(@Client("/") HttpClient httpClient,
+                      ResourceLoader resourceLoader)
+            throws URISyntaxException, IOException, NoSuchAlgorithmException {
+        Optional<URL> resource = resourceLoader.getResource("micronaut5K.png");
+        assertTrue(resource.isPresent());
+        byte[] expectedByteArray = Files.readAllBytes(Path.of(resource.get().toURI()));
+
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] expectedEncodedHash = digest.digest(expectedByteArray);
+        String expected = hexFormat.formatHex(expectedEncodedHash);
+
+        BlockingHttpClient client = httpClient.toBlocking();
+        HttpResponse<byte[]> resp = assertDoesNotThrow(() -> client.exchange(HttpRequest.GET("/"), byte[].class));
+        byte[] responseBytes = resp.body();
+
+        byte[] responseEncodedHash = digest.digest(responseBytes);
+        String response = hexFormat.formatHex(responseEncodedHash);
+        assertEquals(expected, response);
+    }
+}
+```
