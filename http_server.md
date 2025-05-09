@@ -179,3 +179,107 @@ micronaut:
             - http://127.0.0.1:8000
 			- http://localhost:8000
 ```
+
+
+## Content negotiation in a Micronaut Application
+
+Aprenda como responder HTML ou JSON dependendo da solicitação Aceitar Cabeçalho HTTP.
+
+```xml
+<dependency>
+    <groupId>io.micronaut.views</groupId>
+    <artifactId>micronaut-views-thymeleaf</artifactId>
+    <scope>compile</scope>
+</dependency>
+```
+
+
+### Controller
+
+```java
+package example.micronaut;
+
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.MediaType;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Produces;
+import io.micronaut.views.ModelAndView;
+
+import java.util.Collections;
+import java.util.Map;
+
+@Controller
+class MessageController {
+
+    @Produces(value = {MediaType.TEXT_HTML, MediaType.APPLICATION_JSON}) //1
+    @Get
+    HttpResponse<?> index(HttpRequest<?> request) {
+        Map<String, Object> model = Collections.singletonMap("message", "Hello World");
+        Object body = accepts(request, MediaType.TEXT_HTML_TYPE)
+                ? new ModelAndView<>("message.html", model)
+                : model;
+        return HttpResponse.ok(body);
+    }
+
+    private static boolean accepts(HttpRequest<?> request, MediaType mediaType) { // metodo auxiliar para verificar o cabeçalho Accept
+		//2
+        return request.getHeaders()
+                .accept()
+                .stream()
+                .anyMatch(it -> it.getName().contains(mediaType));
+    }
+}
+
+```
+
+1. O cabeçalho de resposta Content-Type é definido com base no cabeçalho Accept da solicitação. Se o cabeçalho Accept contiver text/html, o corpo da resposta será um ModelAndView. Caso contrário, o corpo da resposta será um Map JSON.
+2. O método accepts() verifica se o cabeçalho Accept contém text/html ou application/json.
+
+
+### Teste
+
+```java
+
+package example.micronaut;
+
+import io.micronaut.http.HttpRequest;
+import io.micronaut.http.MediaType;
+import io.micronaut.http.client.BlockingHttpClient;
+import io.micronaut.http.client.HttpClient;
+import io.micronaut.http.client.annotation.Client;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@MicronautTest
+class MessageControllerTest {
+
+    @Test
+    void contentNegotiation(@Client("/") HttpClient httpClient) {
+        BlockingHttpClient client = httpClient.toBlocking();
+
+        String expectedJson = """
+                {"message":"Hello World"}""";
+        String json = assertDoesNotThrow(() -> client.retrieve(HttpRequest.GET("/")
+                .accept(MediaType.APPLICATION_JSON)));
+        assertEquals(expectedJson, json);
+
+        String expectedHtml = """
+                <!DOCTYPE html>
+                <html lang="en">
+                <body>
+                <h1>Hello World</h1>
+                </body>
+                </html>
+                """;
+        String html = assertDoesNotThrow(() -> client.retrieve(HttpRequest.GET("/")
+                .accept(MediaType.TEXT_HTML)));
+        assertEquals(expectedHtml, html);
+    }
+}
+
+```
