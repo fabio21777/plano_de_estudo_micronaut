@@ -141,3 +141,41 @@ public class PoorHealthTest {
 }
 
 ```
+
+
+## Configure CORS in a Micronaut application
+
+### Controller
+
+```java
+package example.micronaut;
+
+import io.micronaut.http.MediaType;
+import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Get;
+import io.micronaut.http.annotation.Produces;
+
+@Controller("/hello")
+public class HelloController {
+    @Get
+    @Produces(MediaType.TEXT_PLAIN)
+    public String index() {
+        return "Hello World";
+    }
+}
+```
+
+### Ativando o CORS
+
+```yaml
+micronaut:
+  server:
+    cors:
+      enabled: true
+
+      configurations:
+        ui:
+          allowed-origins:
+            - http://127.0.0.1:8000
+			- http://localhost:8000
+```
