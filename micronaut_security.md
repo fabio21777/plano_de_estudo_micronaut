@@ -1047,3 +1047,8 @@ class ApiControllerTest {
     }
 }
 ```
+
+
+## Database authentication
+
+[Database authentication](database_authentication.md)
