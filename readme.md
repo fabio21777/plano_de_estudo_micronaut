@@ -82,3 +82,7 @@ A ideia é fornecer uma estrutura de aprendizado que aborde os principais concei
 ## Http client
 
 [Http client](http_client.md)
+
+## Kafka and the Micronaut Framework - Event-Driven Applications
+
+[Kafka and the Micronaut Framework - Event-Driven Applications](kafka_and_the_micronaut_framework_event_driven_applications.md)
